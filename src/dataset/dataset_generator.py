@@ -104,19 +104,18 @@ def generate_energy_grids():
         print("Input file count mismatch!")
         exit(1)
 
-    process_count = {16: 8, 8: 4, 40: 30}.get(multiprocessing.cpu_count(), 1)
+    process_count = {16: 8, 8: 4, 40: 32}.get(multiprocessing.cpu_count(), 1)
 
     print(f"Generating energy grids with {process_count} threads...")
     start = time.time()
     with multiprocessing.Pool(process_count) as pool:
-        for i, e in enumerate(pool.imap_unordered(generate_energy_grid, input_files)):
-            print(e, f"[avg time: {round((time.time() - start) / (i + 1), 1)}s]")
+        for i, p in enumerate(pool.imap_unordered(generate_energy_grid, input_files)):
+            print(f"Processed: {p}  [avg time: {round((time.time() - start) / (i + 1), 2)}s]")
 
 
 def generate_energy_grid(path: Path):
     name = path.name[:path.name.rindex('.')]
     run(['./bin/Vext_cpu', str(path), str(output_path / f"{name}.output")])
-    print(f"Processed: {path}")
     return path
 
 
