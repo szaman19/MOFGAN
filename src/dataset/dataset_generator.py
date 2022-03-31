@@ -1,6 +1,8 @@
+import multiprocessing
 import os
 import subprocess
 import tarfile
+import time
 from pathlib import Path
 from typing import List
 
@@ -10,12 +12,13 @@ from tqdm import tqdm
 core_file_name: str = "2019-07-01-ASR-public_12020.tar"
 core_download_url: str = f"https://zenodo.org/record/3370144/files/{core_file_name}?download=1"
 core_file_size: int = 263168000  # Bytes
+core_files_count: int = 11660
 
 # core_download_csv_url = "https://zenodo.org/record/3370144/files/2019-07-01-ASR-public_12020.csv?download=1"
 
 
-input_path = Path("inputs")
-output_path = Path("outputs")
+input_path = Path("_data/inputs")
+output_path = Path("_data/outputs")
 
 
 def download_core():
@@ -32,11 +35,12 @@ def download_core():
             print("Downloaded file size mismatch!")
             exit(1)
 
-    download_path = Path('core')
+    download_path = Path('_data')
     download_path.mkdir(exist_ok=True)
 
     local_file = download_path / core_file_name
     if not local_file.exists():
+        print("Downloading CoRE dataset...")
         download_file(core_download_url, str(local_file))
 
     if os.path.getsize(local_file) != core_file_size:
@@ -44,6 +48,7 @@ def download_core():
         exit(1)
 
     if not (download_path / 'structure_11660').exists():
+        print("Extracting CoRE dataset...")
         with tarfile.open(local_file) as core_tar:
             core_tar.extractall(download_path)
 
@@ -67,28 +72,65 @@ def run(cmd: List[str], debug=False):
 
 
 def generate_inputs():
-    input_path.mkdir(exist_ok=True)
+    if input_path.exists():
+        assert len(os.listdir(input_path)) == core_files_count
+        return
 
-    for p in Path("core/structure_11660").iterdir():
+    input_path.mkdir()
+
+    cif_folder = Path("_data/structure_11660")
+    cif_files = list(cif_folder.iterdir())
+
+    if len(cif_files) != core_files_count:
+        print("Extracted file count mismatch!")
+        exit(1)
+
+    for p in cif_files:
         print(f"Processing: {p}")
         name = p.name[:p.name.rindex('.')]
-        run(['./bin/cif2input', str(p), 'MOFGAN/data_ff_UFF', str(input_path / f"{name}.input")])
+        run(['./bin/cif2input', str(p), 'src/dataset/MOFGAN/data_ff_UFF', str(input_path / f"{name}.input")])
 
 
 def generate_energy_grids():
-    output_path.mkdir(exist_ok=True)
+    if output_path.exists():
+        assert len(os.listdir(output_path)) == core_files_count
+        return
 
-    for p in input_path.iterdir():
-        print(f"Processing: {p}")
-        name = p.name[:p.name.rindex('.')]
-        run(['./bin/Vext_cpu', str(p), str(output_path / f"{name}.output")])
+    output_path.mkdir()
+
+    input_files = list(input_path.iterdir())
+
+    if len(input_files) != core_files_count:
+        print("Input file count mismatch!")
+        exit(1)
+
+    process_count = {16: 8, 8: 4, 40: 30}.get(multiprocessing.cpu_count(), 1)
+
+    print(f"Generating energy grids with {process_count} threads...")
+    start = time.time()
+    with multiprocessing.Pool(process_count) as pool:
+        for i, e in enumerate(pool.imap_unordered(generate_energy_grid, input_files)):
+            print(e, f"[avg time: {round((time.time() - start) / (i + 1), 1)}s]")
+
+
+def generate_energy_grid(path: Path):
+    name = path.name[:path.name.rindex('.')]
+    run(['./bin/Vext_cpu', str(path), str(output_path / f"{name}.output")])
+    print(f"Processed: {path}")
+    return path
 
 
 def main():
     # Note: First clone https://github.com/MusenZhou/MOFGAN into this directory and compile
     download_core()
-    # generate_inputs()
-    # generate_energy_grids()
+
+    sub_repo = Path('src/dataset/MOFGAN')
+    if not sub_repo.exists():
+        print(f"Missing {sub_repo} subrepo")
+        exit(1)
+
+    generate_inputs()
+    generate_energy_grids()
 
     print("DONE!")
 
