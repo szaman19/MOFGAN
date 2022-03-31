@@ -1,5 +1,3 @@
-from typing import Union
-
 import torch
 from torch import Tensor
 
@@ -10,14 +8,7 @@ class GridGenerator:
         self.grid_size = grid_size
         self.variance = variance
 
-    def calculate(self,
-                  point_coordinates: Tensor,
-                  a: Union[float, Tensor],
-                  b: Union[float, Tensor],
-                  c: Union[float, Tensor],
-                  alpha: Union[float, Tensor],
-                  beta: Union[float, Tensor],
-                  gamma: Union[float, Tensor]) -> Tensor:
+    def calculate(self, point_coordinates, a, b, c, alpha, beta, gamma) -> Tensor:
         """ Generates 3D grids for coordinates
 
             Args:
@@ -35,8 +26,7 @@ class GridGenerator:
             Returns:
                 (Tensor) 4D grid
         """
-        with torch.no_grad():
-            #  No need to track gradients when formulating the grid distances
+        with torch.no_grad():  # No need to track gradients when formulating the grid distances
             transformation_matrix = torch.zeros((3, 3))
             gamma = torch.tensor(gamma)
             beta = torch.tensor(beta)
@@ -44,8 +34,7 @@ class GridGenerator:
             a = torch.tensor(a)
             b = torch.tensor(b)
             c = torch.tensor(c)
-            omega = a * b * c * torch.sqrt(1 - torch.cos(alpha) ** 2 - torch.cos(beta) ** 2
-                                           - torch.cos(gamma) ** 2
+            omega = a * b * c * torch.sqrt(1 - torch.cos(alpha) ** 2 - torch.cos(beta) ** 2 - torch.cos(gamma) ** 2
                                            + 2 * torch.cos(alpha) * torch.cos(beta) * torch.cos(gamma))
 
             transformation_matrix[0][0] = a
@@ -57,9 +46,9 @@ class GridGenerator:
 
             bounding_box = torch.matmul(transformation_matrix, torch.tensor([a, b, c]))
 
-            x_coords = torch.linspace(0., bounding_box[0], self.grid_size + 1)
-            y_coords = torch.linspace(0., bounding_box[1], self.grid_size + 1)
-            z_coords = torch.linspace(0., bounding_box[2], self.grid_size + 1)
+            x_coords = torch.linspace(0.0, bounding_box[0], self.grid_size + 1)
+            y_coords = torch.linspace(0.0, bounding_box[1], self.grid_size + 1)
+            z_coords = torch.linspace(0.0, bounding_box[2], self.grid_size + 1)
 
             x_a_ = x_coords[:-1]
             y_a_ = y_coords[:-1]
