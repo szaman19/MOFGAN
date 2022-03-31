@@ -86,9 +86,9 @@ def generate_energy_grids():
 
 def main():
     # Note: First clone https://github.com/MusenZhou/MOFGAN into this directory and compile
-    # download_core()
+    download_core()
     # generate_inputs()
-    generate_energy_grids()
+    # generate_energy_grids()
 
     print("DONE!")
 
