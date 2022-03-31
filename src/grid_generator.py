@@ -1,6 +1,37 @@
 import torch
 from torch import Tensor
+import numpy as np
 
+
+def Generate_Supercell_coords(lattice_points, 
+                              threshold=0.25):
+    """ Calculates the coordinates for the supercell lattice for a given
+        lattice. 
+
+        Args:
+            lattice_points (np.array): A set of fractional coordiantes with shape 
+                                       (num_elements, 3)
+         Returns:
+            (np.array)
+    """
+    translations = np.array([-1,0,1])
+    all_transformations = \
+        np.array(np.meshgrid(translations, translations, translations)).T.reshape(-1,3)
+    all_transformations = np.delete(all_transformations, 13, 0)  #  Deletes the [0, 0, 0] row
+    
+    additional_points = [lattice_points]
+    for translate in all_transformations:
+        candidate_set = lattice_points + translate
+        for i in range(3):
+            condition = np.abs(np.abs(candidate_set[:,i]) - 1 ) < threshold
+            candidate_set = candidate_set[condition]
+            
+        if len(candidate_set) > 0:
+            print(translate, "\n", candidate_set)
+            additional_points.append(candidate_set)
+
+    supercell_points = np.vstack(additional_points) 
+    return supercell_points
 
 class GridGenerator:
 
@@ -63,7 +94,7 @@ class GridGenerator:
             grid_a = torch.vstack((x_a.flatten(), y_a.flatten(), z_a.flatten())).T
             grid_b = torch.vstack((x_b.flatten(), y_b.flatten(), z_b.flatten())).T
 
-        points = torch.matmul(transformation_matrix, point_coordinates[:, 1:])
+        points = torch.matmul(point_coordinates[:, 1:], transformation_matrix)
 
         x_a_d = -torch.sub(grid_a[:, 0].reshape(-1, 1), points[:, 0].reshape(1, -1))
         y_a_d = -torch.sub(grid_a[:, 1].reshape(-1, 1), points[:, 1].reshape(1, -1))
