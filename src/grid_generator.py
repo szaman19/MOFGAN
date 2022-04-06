@@ -1,4 +1,3 @@
-from math import radians
 import numpy as np
 import torch
 from torch import Tensor
@@ -6,12 +5,12 @@ from torch import Tensor
 
 def calculate_supercell_coords(lattice_points, threshold=0.25) -> np.array:
     """ Calculates the coordinates for the supercell lattice for a given
-        lattice. 
+        lattice.
 
         Args:
-            lattice_points (np.array): A set of fractional coordiantes with shape 
+            lattice_points (np.array): A set of fractional coordiantes with shape
                                        (num_elements, 3)
-            threshold (float):
+            threshold (float): How nearby the points must be to the boundary
          Returns:
             (np.array)
     """
@@ -60,10 +59,10 @@ class GridGenerator:
             b = torch.tensor(b)
             c = torch.tensor(c)
             transformation_matrix = torch.from_numpy(transformation_matrix).float()
-            
-            x_coords = torch.linspace(0.0, a, self.grid_size + 1)
-            y_coords = torch.linspace(0.0, b, self.grid_size + 1)
-            z_coords = torch.linspace(0.0, c, self.grid_size + 1)
+
+            x_coords = torch.linspace(0.0, a.item(), self.grid_size + 1)
+            y_coords = torch.linspace(0.0, b.item(), self.grid_size + 1)
+            z_coords = torch.linspace(0.0, c.item(), self.grid_size + 1)
 
             x_a_ = x_coords[:-1]
             y_a_ = y_coords[:-1]
