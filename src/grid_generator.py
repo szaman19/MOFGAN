@@ -50,9 +50,7 @@ class GridGenerator:
                 a (float or Tensor): Lattice parameter a
                 b (float or Tensor): Lattice parameter b
                 c (float or Tensor): Lattice parameter c
-                alpha (float or Tensor): Lattice parameter alpha
-                beta (float or Tensor): Lattice parameter beta
-                gamma (float or Tensor): Lattice parameter gamma
+                transformatin_matrix (np.array): The fractional to cartesian transformatin matrix
 
             Returns:
                 (Tensor) 4D grid
