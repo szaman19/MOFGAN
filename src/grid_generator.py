@@ -60,7 +60,6 @@ class GridGenerator:
             b = torch.tensor(b)
             c = torch.tensor(c)
             transformation_matrix = torch.from_numpy(transformation_matrix).float()
-            print(transformation_matrix)
             
             x_coords = torch.linspace(0.0, a, self.grid_size + 1)
             y_coords = torch.linspace(0.0, b, self.grid_size + 1)
