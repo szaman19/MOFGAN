@@ -1,3 +1,4 @@
 .idea
 
 _resources/*
+!_resources/AHEQAH_clean.cif

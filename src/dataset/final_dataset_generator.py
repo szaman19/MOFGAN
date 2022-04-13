@@ -12,7 +12,7 @@ import torch
 from pymatgen.io.cif import CifParser
 from torch import Tensor
 
-from grid_generator import GridGenerator, calculate_supercell_coords
+from domain.grid_generator import calculate_supercell_coords, GridGenerator
 from mof_dataset import MOFDataset
 
 
