@@ -2,10 +2,11 @@ import torch
 import numpy as np
 from pymatgen.io.cif import CifParser
 from grid_generator import calculate_supercell_coords, GridGenerator
+from util.constants import RESOURCE_PATH
 
 
 def main():
-    parser = CifParser("../AHEQAH_clean.cif")
+    parser = CifParser(RESOURCE_PATH / "AHEQAH_clean.cif")
     structure = parser.get_structures(False)[0]
     lattice = structure.lattice
     transformation_matrix = lattice.matrix.copy()
@@ -23,7 +24,7 @@ def main():
     print(f"The number of atoms are {super_cell_coords.shape[0]}",
           f"and the total sum of the grid is {grid.sum()}")
 
-    torch.save(grid, "AHEQAH_grid.pt")
+    torch.save(grid, RESOURCE_PATH / "AHEQAH_grid.pt")
 
 
 if __name__ == '__main__':
