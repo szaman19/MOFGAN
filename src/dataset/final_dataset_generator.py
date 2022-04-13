@@ -1,21 +1,17 @@
 from __future__ import annotations
 
-import copy
+import itertools
 import json
 import os
-import pickle
-import random
 import time
 from pathlib import Path
-from typing import List, Dict, Tuple
+from typing import Dict
 
 import numpy
-import pandas
 import torch
-from pandas import DataFrame
 from pymatgen.io.cif import CifParser
 from torch import Tensor
-from torch.utils.data import Dataset
+
 from grid_generator import GridGenerator, calculate_supercell_coords
 from mof_dataset import MOFDataset
 
@@ -51,20 +47,23 @@ def load_probability(path: Path) -> Tensor:
     return GridGenerator(32, 0.1).calculate(torch_coords, a, b, c, transformation_matrix)
 
 
-def generate_combined_dataset():
-    mofs: Dict[str] = {}
-
+def generate_combined() -> Tensor:
     energy_grid_folder = Path('_data/outputs')
-    for i, cif in enumerate(Path('_data/structure_11660').iterdir()):
+    for cif in Path('_data/structure_11660').iterdir():
         mof_name = cif.name[:-len('.cif')]
 
         energy_grid_path = energy_grid_folder / f"{mof_name}.output"
         energy_grid_tensor = read_energy_grid(energy_grid_path)
         probability_tensor = load_probability(cif)
 
-        merged = torch.cat([energy_grid_tensor, probability_tensor])
-        print((i + 1), mof_name)
+        yield mof_name, torch.cat([energy_grid_tensor, probability_tensor])
 
+
+def generate_combined_dataset():
+    mofs: Dict[str] = {}
+
+    for i, (mof_name, merged) in enumerate(generate_combined()):
+        print((i + 1), mof_name)
         mofs[mof_name] = merged
 
         # print(merged.shape)
@@ -86,27 +85,6 @@ def sample(n: int = 16, shuffle: bool = True):
 
 def modify():
     start = time.time()
-    # mof_name = 'ZOYZUK_clean'
-    # with open(f'{mof_name}_tensor.p', 'rb') as mof_file:
-    #     data: Tensor = pickle.load(mof_file)
-    #     print(data.flatten().shape)
-    #     print(data.flatten().view(2, 32, 32, 32).shape)
-    #     print(data.shape)
-    #     print(torch.all(data == data.flatten().view(2, 32, 32, 32)))
-    #
-    # # df = DataFrame({"mof1": data.flatten(), "mof2": data.flatten()})
-    # # print(df)
-    #
-    # df = feather.read_feather('mof_dataset.f')
-    # tensor = torch.from_numpy(df.values).reshape(11660, 2, 32, 32, 32)
-    # print(tensor[1] == data)
-
-    # torch.from_numpy(df['ABAVIJ_clean'].values)
-    # print(type(df['ABAVIJ_clean']))
-    # print(df)
-    #     df = DataFrame({name: tensor.flatten() for name, tensor in data.items()})
-    #     print(df)
-    #     feather.write_feather(df, 'mof_dataset.f')
 
     dataset = MOFDataset.load('mof_dataset.pt')
 
@@ -118,22 +96,20 @@ def modify():
     print(train_dataset, len(train_dataset))
     print(test_dataset, len(test_dataset))
     print(dataset)
-    # with open('mofs.p', 'rb') as f:
-    #     data: Dict = pickle.load(f)
-    #
-    #     dataset = MOFDataset(0.1, 0.25, data)
-    #     dataset.save('mof_dataset.p')
 
-    # print(type(data['ZOYZUK_clean']))
-    #
-    # with open(f'{mof_name}_tensor.p', 'wb+') as mof_file:
-    #     pickle.dump(data[mof_name], mof_file)
-    # print(type(data))
-    # print(data.keys())
     print(f"LOAD TIME: {round(time.time() - start, 2)}s")
 
 
-if __name__ == '__main__':
-    # main()
+def generate_samples(n: int):
+    for i, (mof_name, merged) in itertools.islice(generate_combined(), n):
+        print(i, mof_name)
+
+
+def main():
     # modify()
-    sample()
+    # sample()
+    generate_samples(16)
+
+
+if __name__ == '__main__':
+    main()
