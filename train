@@ -1,0 +1,1 @@
+python -u mof_wgan_gp_multi_channel.py > log 2>&1 & disown
