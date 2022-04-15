@@ -3,7 +3,7 @@ import torch
 from torch import Tensor
 
 
-def calculate_supercell_coords(lattice_points, threshold: float) -> np.array:
+def calculate_supercell_coords(lattice_points, threshold=0.25) -> np.array:  # type: ignore
     """ Calculates the coordinates for the supercell lattice for a given
         lattice.
 
@@ -60,22 +60,55 @@ class GridGenerator:
             c = torch.tensor(c)
             transformation_matrix = torch.from_numpy(transformation_matrix).float()
 
-            x_coords = torch.linspace(0.0, a.item(), self.grid_size + 1)
-            y_coords = torch.linspace(0.0, b.item(), self.grid_size + 1)
-            z_coords = torch.linspace(0.0, c.item(), self.grid_size + 1)
+            #  Check if transformation matrix is diagonal
 
-            x_a_ = x_coords[:-1]
-            y_a_ = y_coords[:-1]
-            z_a_ = z_coords[:-1]
+            is_diagonal = np.allclose(transformation_matrix, np.diag(np.diagonal(transformation_matrix)))
 
-            x_b_ = x_coords[1:]
-            y_b_ = y_coords[1:]
-            z_b_ = z_coords[1:]
+            if is_diagonal:
+                x_coords = torch.linspace(0.0, a.item(), self.grid_size + 1)
+                y_coords = torch.linspace(0.0, b.item(), self.grid_size + 1)
+                z_coords = torch.linspace(0.0, c.item(), self.grid_size + 1)
 
-            x_a, y_a, z_a = torch.meshgrid(x_a_, y_a_, z_a_, indexing='ij')
-            x_b, y_b, z_b = torch.meshgrid(x_b_, y_b_, z_b_, indexing='ij')
-            grid_a = torch.vstack((x_a.flatten(), y_a.flatten(), z_a.flatten())).T
-            grid_b = torch.vstack((x_b.flatten(), y_b.flatten(), z_b.flatten())).T
+                x_a_ = x_coords[:-1]
+                y_a_ = y_coords[:-1]
+                z_a_ = z_coords[:-1]
+
+                x_b_ = x_coords[1:]
+                y_b_ = y_coords[1:]
+                z_b_ = z_coords[1:]
+
+                x_a, y_a, z_a = torch.meshgrid(x_a_, y_a_, z_a_, indexing='ij')
+                x_b, y_b, z_b = torch.meshgrid(x_b_, y_b_, z_b_, indexing='ij')
+                grid_a = torch.vstack((x_a.flatten(), y_a.flatten(), z_a.flatten())).T
+                grid_b = torch.vstack((x_b.flatten(), y_b.flatten(), z_b.flatten())).T
+
+            else:
+                frac_lattice_coords = torch.linspace(0.0, 1.0, self.grid_size + 1)
+                a, b, c = np.meshgrid((frac_lattice_coords,
+                                       frac_lattice_coords,
+                                       frac_lattice_coords), indexing='ij')
+
+                # weird cell, need to do it the hard way with matmul
+                a = a.reshape((self.grid_size + 1,
+                               self.grid_size + 1,
+                               self.grid_size + 1, 1))
+                b = b.reshape((self.grid_size + 1,
+                               self.grid_size + 1,
+                               self.grid_size + 1, 1))
+                c = c.reshape((self.grid_size + 1,
+                               self.grid_size + 1,
+                               self.grid_size + 1, 1))
+                grid_coords = np.concatenate((a, b, c), axis=-1)
+                grid_coords = np.matmul(transformation_matrix,
+                                        grid_coords.reshape((-1, 3)).T)
+
+                grid_a = grid_coords[:self.grid_size,
+                                     :self.grid_size,
+                                     :self.grid_size, :].reshape((-1, 3))
+                grid_b = grid_coords[1:, 1:, 1:, :].reshape((-1, 3))
+
+                grid_a = torch.from_numpy(grid_a)
+                grid_b = torch.from_numpy(grid_b)
 
         points = torch.matmul(point_coordinates[:, 1:], transformation_matrix)
 
