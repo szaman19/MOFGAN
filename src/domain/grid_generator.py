@@ -3,7 +3,7 @@ import torch
 from torch import Tensor
 
 
-def calculate_supercell_coords(lattice_points, threshold=0.25) -> np.array:  # type: ignore
+def calculate_supercell_coords(lattice_points, threshold) -> np.array:  # type: ignore
     """ Calculates the coordinates for the supercell lattice for a given
         lattice.
 
