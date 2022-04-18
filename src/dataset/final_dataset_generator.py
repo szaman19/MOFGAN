@@ -3,6 +3,7 @@ from __future__ import annotations
 import itertools
 import json
 import os
+import pickle
 import random
 import time
 from pathlib import Path
@@ -65,7 +66,8 @@ def iter_merged(shuffle: bool, position_supercell_threshold: float, position_var
         yield mof_name, torch.cat([energy_grid_tensor, probability_tensor])
 
 
-def generate_combined_dataset(path: str, position_supercell_threshold: float, position_variance: float, shuffle: bool, limit: int = None):
+def generate_combined_dataset(position_supercell_threshold: float, position_variance: float, shuffle: bool,
+                              limit: int = None) -> MOFDataset:
     mofs: Dict[str] = {}
 
     sample_generator = iter_merged(shuffle=shuffle,
@@ -76,13 +78,10 @@ def generate_combined_dataset(path: str, position_supercell_threshold: float, po
         sample_generator = itertools.islice(sample_generator, limit)
 
     for i, (mof_name, merged) in enumerate(sample_generator):
-        print((i + 1), mof_name)
-        mofs[mof_name] = merged
+        print((i + 1), mof_name, merged.shape)
+        mofs[mof_name] = [merged]
 
-    print(f"Saving to {path}... ", end="")
-    dataset = MOFDataset(position_supercell_threshold=position_supercell_threshold, position_variance=position_variance, mofs=mofs)
-    dataset.save(path)
-    print("DONE!")
+    return MOFDataset(position_supercell_threshold=position_supercell_threshold, position_variance=position_variance, mofs=mofs)
 
 
 def sample(n: int = 16, shuffle: bool = True):
@@ -117,19 +116,30 @@ def main():
     # generate_combined_dataset("full_dataset.pt", position_supercell_threshold=0.25, position_variance=0.1, shuffle=False)
 
     start = time.time()
-    t1 = torch.zeros([2, 4, 3])
-    t2 = torch.zeros([2, 4, 3])
-    stacked = torch.stack((t1, t2, t2, t2))
-    print(stacked.shape)
-    print(len(list(stacked)))
-    print(list(stacked)[0].shape)
+    # t1 = torch.zeros([2, 4, 3])
+    # t2 = torch.zeros([2, 4, 3])
+    # stacked = torch.stack((t1, t2, t2, t2))
+    # print(stacked.shape)
+    # print(len(list(stacked)))
+    # print(list(stacked)[0].shape)
+    # Cool: KEGZOL_clean
+    # Bad: QUSCAJ_clean, VOBRUB
 
     # dataset = MOFDataset.load('mof_dataset_test.pt')
     # augmented_dataset = dataset.augment_rotations()
     # print(len(augmented_dataset))
     # augmented_dataset.save('mof_dataset_test_rotate.pt')
     print(f"TIME: {round(time.time() - start, 2)}s")
-    # generate_combined_dataset("sample.pt", position_supercell_threshold=0.25, position_variance=0.1, shuffle=True, limit=4)
+    sample_dataset = generate_combined_dataset(position_supercell_threshold=0.5, position_variance=0.2, shuffle=True, limit=8)
+    print(sample_dataset.mofs[0].shape)
+    tensor = torch.stack(sample_dataset.mofs)
+    path = 'real_sample.p'
+    print(f"Saving to {path}... ", end="")
+    with open(path, 'wb+') as f:
+        pickle.dump(tensor, f)
+    print("DONE!")
+
+    # dataset.save(path)
 
 
 if __name__ == '__main__':
