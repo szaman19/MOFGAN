@@ -1,1 +1,3 @@
-python -u src/main.py $@
+#!/bin/bash
+
+PYTHONPATH=src python -u src/main.py $@
