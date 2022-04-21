@@ -1,10 +1,10 @@
 #!/bin/bash
 
-pid=`cat pid.lock 2>/dev/null`
+pid=$(cat pid.lock 2>/dev/null)
 if [ -z "$pid" ]
 then
     echo "Already stopped."
 else
     echo "Stopping PID: $pid"
-    kill -2 $pid
+    kill -2 "$pid"
 fi
