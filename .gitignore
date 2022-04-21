@@ -3,6 +3,7 @@ wandb
 
 resources/*
 !resources/AHEQAH_clean.cif
+!resources/QUSCAJ_clean.cif
 !resources/default_config.json
 
 TODO
