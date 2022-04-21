@@ -1,12 +1,13 @@
 import torch
 import numpy as np
 from pymatgen.io.cif import CifParser
+
+from config import RESOURCE_PATH
 from grid_generator import calculate_supercell_coords, GridGenerator
-from util.constants import RESOURCE_PATH
 
 
 def main():
-    parser = CifParser(RESOURCE_PATH / "AHEQAH_clean.cif")
+    parser = CifParser(RESOURCE_PATH / "QUSCAJ_clean.cif")
     structure = parser.get_structures(False)[0]
     lattice = structure.lattice
     transformation_matrix = lattice.matrix.copy()

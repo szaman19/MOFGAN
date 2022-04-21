@@ -1,0 +1,14 @@
+{
+  "sftp": {
+    "host": "",
+    "user": "",
+    "key": "",
+    "root": ""
+  },
+  "wandb": {
+    "user": ""
+  },
+  "datasets": {
+    "root": ""
+  }
+}
