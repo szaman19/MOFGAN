@@ -19,13 +19,14 @@ class _WBConfig(NamedTuple):
     user: str
 
 
-class _DatasetsConfig(NamedTuple):
+class _LocalConfig(NamedTuple):
     root: str
+    sample_save_path: str
 
 
 with open(RESOURCE_PATH / 'config.json') as f:
     data = json.load(f)
     sftp = _SFTPConfig(**data['sftp'])
     wandb = _WBConfig(**data['wandb'])
-    datasets = _DatasetsConfig(**data['datasets'])
+    local = _LocalConfig(**data['local'])
     print("LOADED CONFIG!")
