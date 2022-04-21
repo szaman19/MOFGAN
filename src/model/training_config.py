@@ -18,6 +18,7 @@ states_folder = root_folder / "states"
 
 
 class Config(NamedTuple):
+    epochs: int = 100
     latent_dim: int = 1024  # Dimensionality of the latent space
     generator_train_interval: int = 5  # number of training steps for discriminator per iteration
     sample_interval: int = 100
