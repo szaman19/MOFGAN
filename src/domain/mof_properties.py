@@ -16,6 +16,7 @@ DIV_FACTOR = GAS_CONSTANT * TEMPERATURE * GRID_SIZE ** 3
 
 
 def get_henry_constant(grid: Tensor) -> float:
+    # assert grid.shape == (32, 32, 32)
     return (torch.sum(torch.exp(-grid.double() / TEMPERATURE)) / DIV_FACTOR).item()
 
 

@@ -110,12 +110,12 @@ def update_dataset():
     print(f"LOAD TIME: {round(time.time() - start, 2)}s")
 
 
-def main():
-    # update_dataset()
-    # sample()
-    # generate_combined_dataset("full_dataset.pt", position_supercell_threshold=0.25, position_variance=0.1, shuffle=False)
+def generate_final():
+    dataset = generate_combined_dataset(position_supercell_threshold=0.5, position_variance=0.2, shuffle=False)
+    dataset.save('mof_dataset.pt')
 
-    start = time.time()
+
+def test():
     # t1 = torch.zeros([2, 4, 3])
     # t2 = torch.zeros([2, 4, 3])
     # stacked = torch.stack((t1, t2, t2, t2))
@@ -129,7 +129,6 @@ def main():
     # augmented_dataset = dataset.augment_rotations()
     # print(len(augmented_dataset))
     # augmented_dataset.save('mof_dataset_test_rotate.pt')
-    print(f"TIME: {round(time.time() - start, 2)}s")
     sample_dataset = generate_combined_dataset(position_supercell_threshold=0.5, position_variance=0.2, shuffle=True, limit=8)
     print(sample_dataset.mofs[0].shape)
     tensor = torch.stack(sample_dataset.mofs)
@@ -140,6 +139,14 @@ def main():
     print("DONE!")
 
     # dataset.save(path)
+
+
+def main():
+    # update_dataset()
+    # sample()
+    start = time.time()
+    generate_final()
+    print(f"TIME: {round(time.time() - start, 2)}s")
 
 
 if __name__ == '__main__':
