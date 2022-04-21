@@ -20,6 +20,7 @@ def main():
     weights = np.ones((len(super_cell_coords), 1))
     super_cell_coords = np.hstack((weights, super_cell_coords))
     torch_coords = torch.from_numpy(super_cell_coords).float()
+    print(transformation_matrix)
     grid = GridGenerator(32, 0.1).calculate(torch_coords, a, b, c, transformation_matrix)
 
     print(f"The number of atoms are {super_cell_coords.shape[0]}",

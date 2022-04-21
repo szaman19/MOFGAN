@@ -64,6 +64,9 @@ class GridGenerator:
 
             is_diagonal = np.allclose(transformation_matrix, np.diag(np.diagonal(transformation_matrix)))
 
+            outer_grid_shape = [self.grid_size + 1, self.grid_size + 1, self.grid_size + 1]
+            inner_grid_shape = [self.grid_size, self.grid_size, self.grid_size]
+
             if is_diagonal:
                 x_coords = torch.linspace(0.0, a.item(), self.grid_size + 1)
                 y_coords = torch.linspace(0.0, b.item(), self.grid_size + 1)
@@ -83,25 +86,23 @@ class GridGenerator:
                 grid_b = torch.vstack((x_b.flatten(), y_b.flatten(), z_b.flatten())).T
 
             else:
-                frac_lattice_coords = torch.linspace(0.0, 1.0, self.grid_size + 1)
-                a, b, c = np.meshgrid((frac_lattice_coords,
-                                       frac_lattice_coords,
-                                       frac_lattice_coords), indexing='ij')
+                frac_lattice_coords = np.linspace(0.0, 1.0, self.grid_size + 1)
+                a, b, c = np.meshgrid(frac_lattice_coords,
+                                      frac_lattice_coords,
+                                      frac_lattice_coords, indexing='ij')
 
                 # weird cell, need to do it the hard way with matmul
-                a = a.reshape((self.grid_size + 1,
-                               self.grid_size + 1,
-                               self.grid_size + 1, 1))
-                b = b.reshape((self.grid_size + 1,
-                               self.grid_size + 1,
-                               self.grid_size + 1, 1))
-                c = c.reshape((self.grid_size + 1,
-                               self.grid_size + 1,
-                               self.grid_size + 1, 1))
+                a = a.reshape((-1, 1))
+                b = b.reshape((-1, 1))
+                c = c.reshape((-1, 1))
                 grid_coords = np.concatenate((a, b, c), axis=-1)
-                grid_coords = np.matmul(transformation_matrix,
-                                        grid_coords.reshape((-1, 3)).T)
+                grid_coords = np.matmul(grid_coords.reshape((-1, 3)), transformation_matrix)
 
+                x_coords = grid_coords[:, 0].reshape(outer_grid_shape + [1])
+                y_coords = grid_coords[:, 1].reshape(outer_grid_shape + [1])
+                z_coords = grid_coords[:, 2].reshape(outer_grid_shape + [1])
+
+                grid_coords = np.concatenate((x_coords, y_coords, z_coords), axis=-1)
                 grid_a = grid_coords[:self.grid_size,
                                      :self.grid_size,
                                      :self.grid_size, :].reshape((-1, 3))
@@ -109,7 +110,6 @@ class GridGenerator:
 
                 grid_a = torch.from_numpy(grid_a)
                 grid_b = torch.from_numpy(grid_b)
-
         points = torch.matmul(point_coordinates[:, 1:], transformation_matrix)
 
         x_a_d = -torch.sub(grid_a[:, 0].reshape(-1, 1), points[:, 0].reshape(1, -1))
@@ -126,6 +126,6 @@ class GridGenerator:
         err_z = torch.special.erf(u_sub * z_a_d) - torch.special.erf(u_sub * z_b_d)
         out = torch.multiply(torch.multiply(err_x, err_y), err_z) / 8
 
-        output_shape = (1, self.grid_size, self.grid_size, self.grid_size)
+        output_shape = [1] + inner_grid_shape
         out = torch.multiply(out, point_coordinates[:, 0]).sum(1).reshape(output_shape)
         return out
