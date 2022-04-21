@@ -1,3 +1,4 @@
+import random
 from enum import Enum
 from typing import List
 
@@ -41,14 +42,20 @@ def scale_invariant_emd(x: List, y: List):
 
 
 class HCTransform(Enum):
-    CUTOFF_10 = 1
+    CUTOFF = 1
     NORMALIZE_CUTOFF_5000 = 2
     LOG_SCALE_ENERGY_1000X = 3
 
 
-def henry_constant_distribution(path: str, transform: HCTransform):
-    dataset = MOFDataset.load(path)
-    if transform == HCTransform.CUTOFF_10:
+def energy_distribution(dataset: MOFDataset, transform: HCTransform):
+    sample_mofs = random.sample(dataset.mofs, 1000)
+    if transform == HCTransform.CUTOFF:
+        return [energy_value for mof in sample_mofs for energy_value in mof[0].flatten().tolist()
+                if -1500 < energy_value < 5_000]  # 9.7e-13 <> 9.5e22
+
+
+def henry_constant_distribution(dataset: MOFDataset, transform: HCTransform):
+    if transform == HCTransform.CUTOFF:
         result = [mof_properties.get_henry_constant(mof[0]) for mof in dataset.mofs]  # 9.7e-13 <> 9.5e22
         return [hc for hc in result if hc < 10]
     elif transform == HCTransform.LOG_SCALE_ENERGY_1000X:
@@ -61,18 +68,27 @@ def main():
     print(scale_invariant_emd([1, 2, 2, 2, 30, 1, 2], [0, 1, 2, 2, 2, 2, 30]))
     print("---")
 
-    # hc_transform = HCTransform.REAL_CUTOFF_10
-    hc_transform = HCTransform.LOG_SCALE_ENERGY_1000X
+    hc_transform = HCTransform.CUTOFF
+    # hc_transform = HCTransform.LOG_SCALE_ENERGY_1000X
 
-    hcs = henry_constant_distribution(f"{config.local.root}/mof_dataset.pt", hc_transform)
-    print(min(hcs), max(hcs))
-    with open(RESOURCE_PATH / 'real_henry_constant_scaled_mof.txt', 'w+') as f:
-        f.writelines([str(hc) + "\n" for hc in hcs])
+    dataset = MOFDataset.load(f"{config.local.root}/mof_dataset.pt")
+    print("Loaded dataset!")
 
     bins = 80
     from matplotlib import pyplot as plt
-    plt.title(f"Real Henry Constant Distribution: {hc_transform.name} ({bins} bins)")
-    plt.hist(hcs, bins=bins, color='green', alpha=0.8)
+
+    energies = energy_distribution(dataset, hc_transform)
+    print("BOUNDS:", min(energies), max(energies))
+    plt.title(f"Real Energy Distribution: {hc_transform.name} ({bins} bins)")
+    plt.hist(energies, bins=bins, color='red', alpha=0.8)
+
+    # hcs = henry_constant_distribution(dataset, hc_transform)
+    # print("BOUNDS:", min(hcs), max(hcs))
+    # plt.title(f"Real Henry Constant Distribution: {hc_transform.name} ({bins} bins)")
+    # plt.hist(hcs, bins=bins, color='green', alpha=0.8)
+    # with open(RESOURCE_PATH / 'real_henry_constant_scaled_mof.txt', 'w+') as f:
+    #     f.writelines([str(hc) + "\n" for hc in hcs])
+
     plt.show()
 
 

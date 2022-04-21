@@ -1,17 +1,18 @@
 import os
-import time
 from pathlib import Path
 from typing import NamedTuple
 
 model_name = "EnergyPosition"
+instance_name = "UpdatedMeasurements"
+
 project_root_folder = Path()
 
 
-def get_training_folder(timestamp: int):
-    return project_root_folder / '_training' / f"{model_name}-{timestamp}"  # TODO: Wandb should eliminate the need for the timestamp here. Need to make sure we log everything important with wandb though
+def get_training_folder():
+    return project_root_folder / '_training' / f"{model_name}-{instance_name}"  # TODO: No more timestamp here. Need to make sure we log everything important with wandb
 
 
-root_folder = get_training_folder(int(time.time() * 1000))
+root_folder = get_training_folder()
 images_folder = root_folder / "images"
 states_folder = root_folder / "states"
 
