@@ -13,10 +13,10 @@ from torch.utils.data import DataLoader
 
 import config
 from dataset.mof_dataset import MOFDataset
-from model import training_config
-from model.gan_logger import GANLogger
-from model.gan_monitor import GANMonitor
-from model.training_config import Config
+from gan import training_config
+from gan.gan_logger import GANLogger
+from gan.gan_monitor import GANMonitor
+from gan.training_config import Config
 from util import transformations
 
 train_config = Config()

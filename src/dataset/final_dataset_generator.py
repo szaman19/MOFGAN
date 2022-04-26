@@ -14,7 +14,7 @@ import torch
 from pymatgen.io.cif import CifParser
 from torch import Tensor
 
-from domain.grid_generator import calculate_supercell_coords, GridGenerator
+from mofs.grid_generator import calculate_supercell_coords, GridGenerator
 from mof_dataset import MOFDataset
 from util import utils
 
@@ -86,11 +86,15 @@ def generate_combined_dataset(position_supercell_threshold: float, position_vari
 
     process_count = utils.get_available_threads()
 
+    torch.multiprocessing.set_sharing_strategy('file_system')
+
     start = time.time()
     with multiprocessing.Pool(process_count) as pool:
         for i, (mof_name, tensor) in enumerate(pool.imap(calculate_grids, function_inputs)):
             print(f"Processed {i + 1}) {mof_name} {tensor.shape}  [avg time: {round((time.time() - start) / (i + 1), 2)}s]")
             mofs[mof_name] = [tensor]
+
+    # mofs = {key: mofs[key] for key in sorted(mofs.keys())}
 
     return MOFDataset(position_supercell_threshold=position_supercell_threshold, position_variance=position_variance, mofs=mofs)
 
@@ -122,7 +126,7 @@ def update_dataset():
 
 
 def generate_final(save_path: str):
-    dataset = generate_combined_dataset(position_supercell_threshold=0.5, position_variance=0.2, shuffle=False)
+    dataset = generate_combined_dataset(position_supercell_threshold=0.4, position_variance=0.2, shuffle=False)
     dataset.save(save_path)
 
 

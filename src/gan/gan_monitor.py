@@ -10,9 +10,9 @@ from torch.nn import Module
 from torch.optim import Optimizer
 
 import config
-from domain import mof_stats, mof_properties
-from model import training_config
-from model.training_config import Config
+from mofs import mof_stats, mof_properties
+from gan import training_config
+from gan.training_config import Config
 
 cuda = True if torch.cuda.is_available() else False
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')

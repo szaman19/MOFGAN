@@ -5,7 +5,7 @@ from typing import List
 import config
 from config import RESOURCE_PATH
 from dataset.mof_dataset import MOFDataset
-from domain import mof_properties
+from mofs import mof_properties
 from util import transformations
 
 

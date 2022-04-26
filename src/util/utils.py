@@ -48,5 +48,5 @@ def get_available_threads():
     return {
         8:  4,
         16: 8,
-        40: 32,
+        40: 30,
     }.get(multiprocessing.cpu_count(), 1)
