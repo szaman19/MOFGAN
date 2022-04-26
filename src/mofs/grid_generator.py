@@ -103,9 +103,7 @@ class GridGenerator:
                 z_coords = grid_coords[:, 2].reshape(outer_grid_shape + [1])
 
                 grid_coords = np.concatenate((x_coords, y_coords, z_coords), axis=-1)
-                grid_a = grid_coords[:self.grid_size,
-                                     :self.grid_size,
-                                     :self.grid_size, :].reshape((-1, 3))
+                grid_a = grid_coords[:self.grid_size, :self.grid_size, :self.grid_size, :].reshape((-1, 3))
                 grid_b = grid_coords[1:, 1:, 1:, :].reshape((-1, 3))
 
                 grid_a = torch.from_numpy(grid_a)

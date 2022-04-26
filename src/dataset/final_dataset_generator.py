@@ -1,18 +1,20 @@
 from __future__ import annotations
 
 import json
-import multiprocessing
 import os
 import pickle
 import random
 import time
 from pathlib import Path
-from typing import Dict, NamedTuple
+from typing import Dict, NamedTuple, List
 
 import numpy
+import ray
 import torch
 from pymatgen.io.cif import CifParser
+from ray.util import multiprocessing
 from torch import Tensor
+import ray.util
 
 from mofs.grid_generator import calculate_supercell_coords, GridGenerator
 from mof_dataset import MOFDataset
@@ -65,38 +67,44 @@ def calculate_grids(params: GridCalculationRequest):
 
     energy_grid_path = Path(f"_data/outputs/{mof_name}.output")
     energy_grid_tensor = read_energy_grid(energy_grid_path)
-    probability_tensor = load_probability(params.cif, position_supercell_threshold=params.meta.position_supercell_threshold,
+    probability_tensor = load_probability(params.cif,
+                                          position_supercell_threshold=params.meta.position_supercell_threshold,
                                           position_variance=params.meta.position_variance)
 
+    print("Calculated:", mof_name)
     return mof_name, torch.cat([energy_grid_tensor, probability_tensor])
 
 
-def generate_combined_dataset(position_supercell_threshold: float, position_variance: float, shuffle: bool,
-                              limit: int = None) -> MOFDataset:
-    mofs: Dict[str] = {}
-    dataset_meta = MOFDatasetMeta(position_supercell_threshold=position_supercell_threshold, position_variance=position_variance)
+def generate_merged_from_paths(paths: List[Path], meta: MOFDatasetMeta) -> Dict[str, Tensor]:
+    function_inputs = [GridCalculationRequest(path, meta) for path in paths]
 
+    process_count = utils.get_available_threads()
+    print("Available Threads:", process_count)
+
+    mofs: Dict[str, Tensor] = {}
+
+    print("Starting ray...")
+    start = time.time()
+    with ray.util.multiprocessing.Pool(process_count) as pool:
+        for i, (mof_name, tensor) in enumerate(pool.imap(calculate_grids, function_inputs)):
+            print(f"Processed {i + 1}) {mof_name} {tensor.shape}  [avg time: {round((time.time() - start) / (i + 1), 2)}s]")
+            mofs[mof_name] = tensor
+
+    return mofs
+    # return {key: mofs[key] for key in sorted(mofs.keys())}
+
+
+def generate_combined_dataset(meta: MOFDatasetMeta, shuffle: bool, limit: int = None) -> MOFDataset:
     paths = [path for path in Path('_data/structure_11660').iterdir()]
     if shuffle:
         random.shuffle(paths)
     if limit:
         paths = paths[:limit]
 
-    function_inputs = [GridCalculationRequest(path, dataset_meta) for path in paths]
-
-    process_count = utils.get_available_threads()
-
-    torch.multiprocessing.set_sharing_strategy('file_system')
-
-    start = time.time()
-    with multiprocessing.Pool(process_count) as pool:
-        for i, (mof_name, tensor) in enumerate(pool.imap(calculate_grids, function_inputs)):
-            print(f"Processed {i + 1}) {mof_name} {tensor.shape}  [avg time: {round((time.time() - start) / (i + 1), 2)}s]")
-            mofs[mof_name] = [tensor]
-
-    # mofs = {key: mofs[key] for key in sorted(mofs.keys())}
-
-    return MOFDataset(position_supercell_threshold=position_supercell_threshold, position_variance=position_variance, mofs=mofs)
+    mofs: Dict[str, Tensor] = generate_merged_from_paths(paths, meta)
+    return MOFDataset(position_supercell_threshold=meta.position_supercell_threshold,
+                      position_variance=meta.position_variance,
+                      mofs={mof_name: [tensor] for mof_name, tensor in mofs.items()})
 
 
 def sample(n: int = 16, shuffle: bool = True):
@@ -125,19 +133,31 @@ def update_dataset():
     print(f"LOAD TIME: {round(time.time() - start, 2)}s")
 
 
-def generate_final(save_path: str):
-    dataset = generate_combined_dataset(position_supercell_threshold=0.4, position_variance=0.2, shuffle=False)
+def generate_final(save_path: str, meta: MOFDatasetMeta):
+    dataset = generate_combined_dataset(meta, shuffle=False)
     dataset.save(save_path)
 
 
-def generate_sample(save_path: str, count: int):
-    sample_dataset = generate_combined_dataset(position_supercell_threshold=0.5, position_variance=0.2, shuffle=True, limit=count)
+def generate_sample(save_path: str, meta: MOFDatasetMeta, count: int):
+    sample_dataset = generate_combined_dataset(meta, shuffle=True, limit=count)
     print(sample_dataset.mofs[0].shape)
-    tensor = torch.stack(sample_dataset.mofs)
+    save_sample(sample_dataset.mofs, save_path)
+    # sample_dataset.save(save_path)
+
+
+def save_sample(mofs: List[Tensor], save_path: str):
+    tensor = torch.stack(mofs)
     print(f"Saving to: {save_path}")
     with open(save_path, 'wb+') as f:
         pickle.dump(tensor, f)
     print("DONE!")
+
+
+def generate_grids(mof_names: List[str], meta: MOFDatasetMeta):
+    mof_root = Path('_data/structure_11660')
+    paths = [mof_root / f"{mof_name}.cif" for mof_name in mof_names]
+    mofs = generate_merged_from_paths(paths, meta)
+    save_sample(list(mofs.values()), 'named_sample.p')
 
 
 def test():
@@ -163,12 +183,17 @@ def main():
     # - VOBRUB
     # - RAVXAP_clean
     # - HIFTOG01_clean
+    # LARGE: RIVDIL_clean
 
     # update_dataset()
     # sample()
     start = time.time()
-    generate_final('mof_dataset.pt')
-    # generate_sample('real_mof_sample.p', 32)
+    meta = MOFDatasetMeta(position_supercell_threshold=0.4, position_variance=0.2)
+    # generate_grids(['PIYZAZ_clean', 'RIVDIL_clean', 'QUSCAJ_clean'] + ['PIYZAZ_clean'] * 100, meta)
+    generate_final('mof_dataset.pt', meta)
+    # generate_sample('real_mof_sample.p', meta, 8)
+    # d = MOFDataset.load('real_mof_sample.p')
+
     print(f"TIME: {round(time.time() - start, 2)}s")
 
 
