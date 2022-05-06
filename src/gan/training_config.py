@@ -1,9 +1,10 @@
 import os
+from enum import Enum
 from pathlib import Path
-from typing import NamedTuple
+from typing import NamedTuple, Dict
 
 model_name = "EnergyPosition"
-instance_name = "UpdatedMeasurements"
+instance_name = "FixedPositions"
 
 project_root_folder = Path()
 
@@ -15,6 +16,7 @@ def get_training_folder():
 root_folder = get_training_folder()
 images_folder = root_folder / "images"
 states_folder = root_folder / "states"
+metrics_folder = root_folder / "metrics"
 
 
 class Config(NamedTuple):
@@ -34,3 +36,17 @@ class Config(NamedTuple):
 
 def create_directories():
     os.makedirs(images_folder, exist_ok=True)
+    os.makedirs(states_folder, exist_ok=True)
+
+
+class DatasetType(Enum):
+    FULL = 1
+    TRAIN = 2
+    TEST = 3
+
+
+datasets: Dict[DatasetType, str] = {
+    DatasetType.FULL:  '_datasets/mof_dataset_2c.pt',
+    DatasetType.TRAIN: '_datasets/mof_dataset_2c_train.pt',
+    DatasetType.TEST:  '_datasets/mof_dataset_2c_test.pt',
+}

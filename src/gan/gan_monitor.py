@@ -1,18 +1,24 @@
+import copy
+import hashlib
 import pickle
 import time
-from typing import Tuple, Callable
+from typing import Tuple, Callable, List
 
 import numpy as np
+import ray.util.multiprocessing
 import torch
 import wandb
 from torch import Tensor
 from torch.nn import Module
 from torch.optim import Optimizer
+from torch.utils.data import DataLoader
+from tqdm import tqdm
 
-import config
-from mofs import mof_stats, mof_properties
+from dataset.mof_dataset import MOFDataset
 from gan import training_config
-from gan.training_config import Config
+from gan.training_config import Config, DatasetType
+from mofs import mof_stats, mof_properties
+from util import cache
 
 cuda = True if torch.cuda.is_available() else False
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -20,18 +26,30 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 class GANMonitor:
 
-    def __init__(self, train_config: Config, image_shape: Tuple[int, int, int, int], batches_per_epoch: int,
-                 latent_vector_generator: Callable[[int], Tensor],
+    def __init__(self, train_config: Config, image_shape: Tuple[int, int, int, int], data_loader: DataLoader,
+                 latent_vector_generator: Callable[[int, bool], Tensor],
                  generator: Module, critic: Module,
-                 generator_optimizer: Optimizer, critic_optimizer: Optimizer):
+                 generator_optimizer: Optimizer, critic_optimizer: Optimizer,
+                 transform_code: str, enable_wandb: bool):
         self.train_config = train_config
         self.image_shape = image_shape
-        self.batches_per_epoch = batches_per_epoch
+        self.batches_per_epoch = len(data_loader)
         self.latent_vector_generator = latent_vector_generator
         self.generator = generator
         self.critic = critic
         self.generator_optimizer = generator_optimizer
         self.critic_optimizer = critic_optimizer
+        self.transform_code = transform_code
+        self.enable_wandb = enable_wandb
+        self.real_hcs: List[float] = []
+
+        batch_iterator = iter(data_loader)
+        for i in range(2):  # Batches to sample
+            batch: Tensor = next(batch_iterator)
+            sample_batch_path = (training_config.root_folder / f'real_sample_{i}.p')
+            with sample_batch_path.open('wb+') as f:
+                print(f"Saving real sample batch: {sample_batch_path}")
+                pickle.dump(batch.cpu(), f)
 
         self.epoch = 0
         self.global_batch_index = 0
@@ -66,7 +84,7 @@ class GANMonitor:
         real_garbage_emd = abs(garbage_pred.mean() - real_pred.mean()).item()
         print("GARBAGE/REAL EMD:", real_garbage_emd)
 
-        if self.train_both_count % 5 == 0:
+        if self.enable_wandb and self.train_both_count % 5 == 0:
             wandb.log({"Negative Critic Loss": -d_loss, "Generator Loss": g_loss,
                        "Real/Generated EMD":   real_generated_emd,
                        "Real/Random EMD":      real_garbage_emd,
@@ -80,9 +98,10 @@ class GANMonitor:
         self.train_both_count += 1
 
     def on_iteration_complete(self, generated_images: Tensor):
+        save_id = str(self.global_batch_index).zfill(5)
+
         if self.global_batch_index % self.train_config.sample_interval == 0:
             save_start_time = time.time()
-            save_id = str(self.global_batch_index).zfill(5)
             save_path = training_config.images_folder / f"{save_id}.p"
             with open(save_path, "wb+") as f:
                 pickle.dump(generated_images.cpu(), f)
@@ -91,23 +110,75 @@ class GANMonitor:
             if self.global_batch_index % (10 * self.train_config.sample_interval) == 0:
                 save_start_time = time.time()
                 (training_config.states_folder / save_id).mkdir(exist_ok=True, parents=True)
-                torch.save(self.generator.state_dict(), training_config.states_folder / save_id / 'generator.p')
+                generator_state = {k: v.cpu() for k, v in self.generator.state_dict().items()}
+                critic_state = {k: v.cpu() for k, v in self.critic.state_dict().items()}
+
+                torch.save(generator_state, training_config.states_folder / save_id / 'generator.p')
                 torch.save(self.generator_optimizer.state_dict(), training_config.states_folder / save_id / 'generator_optimizer.p')
-                torch.save(self.critic.state_dict(), training_config.states_folder / save_id / 'critic.p')
+                torch.save(critic_state, training_config.states_folder / save_id / 'critic.p')
                 torch.save(self.critic_optimizer.state_dict(), training_config.states_folder / save_id / 'critic_optimizer.p')
                 print(f"SAVED MODEL STATES ({round(time.time() - save_start_time, 3)}s)")
 
+        # if self.enable_wandb and self.epoch_batch_index % (self.train_config.sample_interval * 2) == 0:
         if self.epoch_batch_index % (self.train_config.sample_interval * 2) == 0:
+            # print(model_clone)
             print("Checking HC distribution...")  # TODO: Parallelize this
-            hc_check_start = time.time()
-            hcs = []
-            for j in range(1166):
-                for hc_sample_mof in self.generator(self.latent_vector_generator(10)):
-                    hcs.append(mof_properties.get_henry_constant(hc_sample_mof))
-            print(f"Generated samples {round(time.time() - hc_check_start, 2)}s")
-            with open(config.RESOURCE_PATH / 'real_henry_constant_scaled_mof.txt') as f:
-                real_hcs = [float(x) for x in f.read().splitlines()]
-            hc_emd = mof_stats.scale_invariant_emd(hcs, real_hcs)
+            generator_clone = self.generator.__class__()
+            generator_clone.load_state_dict(copy.deepcopy(self.generator.state_dict()))
+            generator_clone.cpu()
+            # generator_clone.to(device)
+            # self.real_hcs = [1, 2, 3]
+            real_hc_cache_key = ['real_hcs', self.transform_code]
+            self.real_hcs = cache.get(real_hc_cache_key)
 
-            wandb.log({"HC Distribution EMD": hc_emd})
+            if not self.real_hcs:
+                print("Loading full real MOF dataset...")
+                full_dataset = MOFDataset.load(training_config.datasets[DatasetType.FULL])
+                print("LOADED DATASET:", full_dataset)
+                print("Computing real henry constant distribution...")
+                start = time.time()
+                with ray.util.multiprocessing.Pool(36) as pool:
+                    energy_grids = [mof[0] for mof in full_dataset.mofs]
+                    self.real_hcs = list(tqdm(pool.imap(mof_properties.get_henry_constant, energy_grids),
+                                              total=len(energy_grids), ncols=80, unit='mofs'))
+
+                print("Saving...")
+                cache.store(real_hc_cache_key, self.real_hcs)
+                transform_code_hash: str = hashlib.sha1(self.transform_code.encode('utf-8')).hexdigest()
+                with (training_config.root_folder / f"real_transformed_hcs-{transform_code_hash}.txt").open('w+') as f:
+                    f.write("\n".join(str(x) for x in self.real_hcs))  # Save real HC distribution
+                print(f"DONE: {round(time.time() - start, 2)}s")
+
+            with ray.util.multiprocessing.Pool(36) as pool:
+                def generate_sample_hcs(latent_vector: Tensor):
+                    sample_hcs = []
+                    for hc_sample_mof in generator_clone(latent_vector):
+                        sample_hcs.append(mof_properties.get_henry_constant(hc_sample_mof[0]))
+                    return sample_hcs
+
+                print("Computing current generated HC distribution")
+                hc_check_start = time.time()
+                request = [self.latent_vector_generator(110, True) for _ in range(106)]  # Same size as real = 11660
+                hc_samples = list(tqdm(pool.imap(generate_sample_hcs, request),
+                                       total=len(request), ncols=80, unit='grids'))
+                hc_samples = [x for sample in hc_samples for x in sample]
+                print(f"DONE: {round(time.time() - hc_check_start, 2)}s")
+            # for j in range(1166):
+            # for hc_sample_mof in generator_clone(self.latent_vector_generator(10)):  # .cpu()
+            #     hcs.append(mof_properties.get_henry_constant(hc_sample_mof[0]))
+            # print(j, time.time() - hc_check_start)
+            # TODO: Need to compare with real_hcs under same transformation
+            # TODO: Load and produce real_hcs as well as do check in parallel
+
+            hc_result_path = training_config.metrics_folder / save_id / "henry_constant.txt"
+            hc_result_path.parent.mkdir(parents=True, exist_ok=True)
+            with hc_result_path.open('w+') as f:
+                f.write("\n".join(str(x) for x in hc_samples))
+
+            hc_emd = mof_stats.scale_invariant_emd(hc_samples, self.real_hcs)
+
+            if self.enable_wandb:
+                wandb.log({"HC Distribution EMD": hc_emd})
+            else:
+                print(f"HC Distribution EMD: {hc_emd}")
             print(f"HC Check Time: {time.time() - hc_check_start}s")
