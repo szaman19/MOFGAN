@@ -5,16 +5,18 @@ import os
 import pickle
 import random
 import time
+from collections import Counter
 from pathlib import Path
 from typing import Dict, NamedTuple, List
 
 import numpy
 import ray
 import torch
+from pymatgen.core import PeriodicSite, Element, Species
+from pymatgen.core.periodic_table import ElementBase
 from pymatgen.io.cif import CifParser
 from ray.util import multiprocessing
 from torch import Tensor
-import ray.util
 
 from mofs.grid_generator import calculate_supercell_coords, GridGenerator
 from mof_dataset import MOFDataset
@@ -76,12 +78,12 @@ def calculate_grids(params: GridCalculationRequest):
 
 
 def generate_merged_from_paths(paths: List[Path], meta: MOFDatasetMeta) -> Dict[str, Tensor]:
-    function_inputs = [GridCalculationRequest(path, meta) for path in paths]
-
     process_count = utils.get_available_threads()
     print("Available Threads:", process_count)
 
     mofs: Dict[str, Tensor] = {}
+    function_inputs = [GridCalculationRequest(path, meta) for path in paths]
+    os.environ["RAY_DISABLE_MEMORY_MONITOR"] = "1"
 
     print("Starting ray...")
     start = time.time()
@@ -133,9 +135,20 @@ def update_dataset():
     print(f"LOAD TIME: {round(time.time() - start, 2)}s")
 
 
-def generate_final(save_path: str, meta: MOFDatasetMeta):
-    dataset = generate_combined_dataset(meta, shuffle=False)
-    dataset.save(save_path)
+def generate_final(save_path_str: str, meta: MOFDatasetMeta):
+    save_path = Path(save_path_str)
+    if not save_path.exists():
+        combined = generate_combined_dataset(meta, shuffle=False)
+        combined.save(save_path)
+    else:
+        combined = MOFDataset.load(save_path)
+    print(f"Loaded: {len(combined)} MOFs")
+    train, test = combined.split(training_percentage=0.7)
+
+    train.save(save_path.parent / f"{save_path.stem}_train.pt")
+    test.save(save_path.parent / f"{save_path.stem}_test.pt")
+
+    train.augment_rotations().save(save_path.parent / f"{save_path.stem}_rotate.pt")
 
 
 def generate_sample(save_path: str, meta: MOFDatasetMeta, count: int):
@@ -160,20 +173,52 @@ def generate_grids(mof_names: List[str], meta: MOFDatasetMeta):
     save_sample(list(mofs.values()), 'named_sample.p')
 
 
-def test():
+# def augment_rotations(load_path_str: str):
+#     load_path = Path(load_path_str)
+#     print(f"Loading: {load_path}")
+#     dataset = MOFDataset.load(load_path)
+#
+#     save_path = load_path.parent / f"{load_path.stem}_rotate.pt"
+#     augmented_dataset = dataset.augment_rotations()
+#     print(len(augmented_dataset))
+#     print(f"Saving to: {save_path}")
+#     augmented_dataset.save(save_path)
+
+
+def _test():
     # t1 = torch.zeros([2, 4, 3])
     # t2 = torch.zeros([2, 4, 3])
     # stacked = torch.stack((t1, t2, t2, t2))
     # print(stacked.shape)
     # print(len(list(stacked)))
     # print(list(stacked)[0].shape)
-
-    # dataset = MOFDataset.load('mof_dataset_test.pt')
-    # augmented_dataset = dataset.augment_rotations()
-    # print(len(augmented_dataset))
-    # augmented_dataset.save('mof_dataset_test_rotate.pt')
-    # dataset.save(path)
     pass
+
+
+def check_atom_types():
+    total_counts: Counter[Element] = Counter()
+    # Organic: CHONP
+    paths = list(Path('_data/structure_11660').iterdir())
+    for i, path in enumerate(paths):
+        parser = CifParser(str(path))
+        structures = parser.get_structures(primitive=False)
+        assert len(structures) == 1
+        structure = structures[0]
+        current_elements = [site.specie for site in structure.group_by_types()]
+        counts = Counter(current_elements)
+        total_counts += counts
+
+        if i % 20 == 0:
+            print(f"{i}/{len(paths)}")
+            # elements = {element.symbol: element.number for element in result}
+            # elements = [x for x in sorted([e.symbol for e in result], key=lambda e: e[1])]
+            print("\t", [e.symbol for e in total_counts if e.is_metal])
+            print("\t", [e.symbol for e in total_counts if not e.is_metal])
+        # if i > 50:
+        #     break
+
+    result = {e.symbol: total_counts[e] for e in total_counts}
+    print(sorted(result.items(), key=lambda e: e[1], reverse=True))
 
 
 def main():
@@ -190,9 +235,12 @@ def main():
     start = time.time()
     meta = MOFDatasetMeta(position_supercell_threshold=0.4, position_variance=0.2)
     # generate_grids(['PIYZAZ_clean', 'RIVDIL_clean', 'QUSCAJ_clean'] + ['PIYZAZ_clean'] * 100, meta)
-    generate_final('mof_dataset.pt', meta)
+    # generate_final('mof_dataset.pt', meta)
     # generate_sample('real_mof_sample.p', meta, 8)
-    # d = MOFDataset.load('real_mof_sample.p')
+    # d = MOFDataset.load('mof_dataset.pt')
+    # print(len(d.mofs))
+    generate_final('_datasets/mof_dataset_2c.pt', meta)
+    # check_atom_types()
 
     print(f"TIME: {round(time.time() - start, 2)}s")
 

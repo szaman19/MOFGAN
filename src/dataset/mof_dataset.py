@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import random
 import time
+from pathlib import Path
 from typing import List, Dict, Tuple, Callable
 
 import torch
@@ -18,6 +19,7 @@ class MOFDataset(Dataset):
         self.position_variance = position_variance
         self.mof_names = list(mofs.keys())
         self.mofs: List[Tensor] = [rotation for mof_name in self.mof_names for rotation in mofs[mof_name]]
+        assert len(mofs) == 0 or (len(self.mofs) % len(self.mof_names) == 0)
 
     def clone_with_data(self, mofs: Dict[str, List[Tensor]]):
         return MOFDataset(position_supercell_threshold=self.position_supercell_threshold,
@@ -33,6 +35,8 @@ class MOFDataset(Dataset):
         print(f"Finished transforming dataset in {round(time.time() - start, 2)}s")
 
     def augment_rotations(self) -> MOFDataset:
+        print(self.mofs[0].shape)
+        print(len(self.mof_names), len(self))
         assert len(self.mof_names) == len(self.mofs)  # Otherwise, we already have rotations
 
         print("Augmenting rotations...")
@@ -43,12 +47,13 @@ class MOFDataset(Dataset):
         return self.clone_with_data(result)
 
     def split(self, training_percentage: float) -> Tuple[MOFDataset, MOFDataset]:
+        assert len(self.mof_names) == len(self.mofs)
         indices = list(range(len(self.mof_names)))
         train_indices: List[int] = sorted(random.sample(indices, round(training_percentage * len(indices))))
         test_indices: List[int] = sorted(set(indices) - set(train_indices))
 
-        train_mofs = {self.mof_names[i]: self.mofs[i] for i in train_indices}
-        test_mofs = {self.mof_names[i]: self.mofs[i] for i in test_indices}
+        train_mofs = {self.mof_names[i]: [self.mofs[i]] for i in train_indices}
+        test_mofs = {self.mof_names[i]: [self.mofs[i]] for i in test_indices}
         return self.clone_with_data(train_mofs), self.clone_with_data(test_mofs)
 
     def __copy__(self):
@@ -63,7 +68,7 @@ class MOFDataset(Dataset):
         return self.mofs[index]
 
     @staticmethod
-    def load(path: str) -> MOFDataset:
+    def load(path: str | Path) -> MOFDataset:
         with open(path, 'rb') as f:
             # return torch.load(f)
             loaded = torch.load(f)
@@ -71,9 +76,11 @@ class MOFDataset(Dataset):
                                 position_variance=loaded.position_variance, mofs={})
             result.mof_names = loaded.mof_names
             result.mofs = loaded.mofs
+            print(f"Loaded MOF dataset: {len(result.mof_names)} unique, {len(result)} total")
             return result
 
-    def save(self, path: str):
+    def save(self, path: str | Path):
+        print(f"Saving dataset: {path}")
         with open(path, 'wb+') as f:
             torch.save(self, f)
 
