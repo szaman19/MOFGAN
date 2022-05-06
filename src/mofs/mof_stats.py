@@ -3,7 +3,6 @@ from enum import Enum
 from typing import List
 
 import config
-from config import RESOURCE_PATH
 from dataset.mof_dataset import MOFDataset
 from mofs import mof_properties
 from util import transformations
