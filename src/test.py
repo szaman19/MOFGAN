@@ -1,5 +1,4 @@
 import torch
-from torch import Size
 
 
 def main():
@@ -24,3 +23,4 @@ def main():
 
 if __name__ == '__main__':
     main()
+    # test()

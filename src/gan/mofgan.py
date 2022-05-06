@@ -1,4 +1,3 @@
-import asyncio
 import inspect
 import time
 
@@ -10,16 +9,16 @@ import wandb
 from torch import Tensor
 from torch.utils.data import DataLoader
 
-import config
+import project_config
 from dataset.mof_dataset import MOFDataset
-from gan import training_config
+from gan import training_config, gan_monitor
 from gan.gan_logger import GANLogger
 from gan.gan_monitor import GANMonitor
-from gan.training_config import Config, DatasetType
+from gan.training_config import TrainingConfig, DatasetType
 from util import transformations
 
-train_config = Config()
-GANLogger.log(train_config)
+config = TrainingConfig()
+GANLogger.log(config)
 
 channels = 2
 grid_size = 32
@@ -38,7 +37,7 @@ class Generator(nn.Module):
         padding = (1, 1, 1)
 
         self.g_latent_to_features = nn.Sequential(
-            nn.Linear(train_config.latent_dim, 8 * grid_size * channels * 2 * 2 * 2),
+            nn.Linear(config.latent_dim, 8 * grid_size * channels * 2 * 2 * 2),
             # nn.Sigmoid(),
             # nn.SiLU(),
         )
@@ -169,7 +168,9 @@ def data_transform_function(mofs: Tensor) -> Tensor:
     energy_grids = mofs[:, 0].float()
     position_grids = mofs[:, 1].float()
 
-    GANLogger.log(f"Original Bounds) ENERGY: {get_bounds(energy_grids)}, POSITIONS: {get_bounds(position_grids)} ")
+    print("Original Data:")
+    print(f"\tEnergy Bounds: {get_bounds(energy_grids)}")
+    print(f"\tPosition Bounds: {get_bounds(position_grids)} ")
 
     # energy_grids = torch.from_numpy(np.interp(energy_grids, [-5200, 5200], [0, 1])).float()
     # position_grids = torch.from_numpy(np.interp(position_grids, [0, 7.5], [0, 1])).float()
@@ -179,31 +180,40 @@ def data_transform_function(mofs: Tensor) -> Tensor:
     # # energy_grids = (energy_grids - 2) / 1.5  # Double log scale (Note: double scaling can cause out of memory issues)
     # position_grids = (position_grids * 20) - 0.15
 
-    energy_grids = torch.from_numpy(np.interp(energy_grids, [-5200, 5200], [0, 1])).float()
+    energy_grids = transformations.scale_log(energy_grids)
+    # energy_grids = torch.from_numpy(np.interp(energy_grids, [-5200, 5200], [0, 1])).float()
+
+    print("Post Numeric Transformation Bounds:")
+    print(f"\tEnergy: {get_bounds(energy_grids)}")
+    print(f"\tPositions: {get_bounds(position_grids)}")
+
+    energy_grids = torch.from_numpy(np.interp(energy_grids, [-9, 42], [0, 1])).float()
     position_grids = torch.from_numpy(np.interp(position_grids, [0, 7.5], [0, 1])).float()
 
-    print("E:", energy_grids.mean().item(), energy_grids.std().item())
-    print("P:", position_grids.mean().item(), position_grids.std().item())
     # energy_grids = torch.from_numpy(np.interp(energy_grids, [-2.3, 3.7], [-1, 1])).float()
     # position_grids = torch.from_numpy(np.interp(position_grids, [0, 7.5], [-1, 1])).float()
     # energy_grids = torch.from_numpy(np.interp(energy_grids, [-2.3, 3.7], [-1, 1])).float()
     # position_grids = torch.from_numpy(np.interp(position_grids, [0, 7.5], [-1, 1])).float()
-
-    GANLogger.log(f"Transformed Bounds) ENERGY: {get_bounds(energy_grids)}, POSITIONS: {get_bounds(position_grids)} ")
 
     result = torch.stack([energy_grids, position_grids], dim=1)
+    print("\n----- FINAL -----")
+    for name, channel in {"Energy": energy_grids, "Positions": position_grids}.items():
+        print(f"{name}:")
+        print(f"\tBounds: {get_bounds(channel)}")
+        print(f"\tMean: {channel.mean()}")
+        print(f"\tSTD: {channel.std()}")
 
-    GANLogger.log(f"Training data shape: {result.shape}")
+    print(f"Training data shape: {result.shape}")
 
     return result
 
 
 def generate_random_latent_vector(batch_size: int, cpu=False) -> Tensor:
     if cpu:
-        return torch.from_numpy(np.random.normal(0, 1, (batch_size, train_config.latent_dim))) \
+        return torch.from_numpy(np.random.normal(0, 1, (batch_size, config.latent_dim))) \
             .float().cpu()
     else:
-        return torch.from_numpy(np.random.normal(0, 1, (batch_size, train_config.latent_dim))) \
+        return torch.from_numpy(np.random.normal(0, 1, (batch_size, config.latent_dim))) \
             .float().requires_grad_(True).to(device)
 
 
@@ -211,7 +221,7 @@ def generate_random_latent_vector(batch_size: int, cpu=False) -> Tensor:
 #  Training
 # ----------
 
-def main():
+def train():
     start = time.time()
     # TODO: Probably want to rotate after loading instead of storing rotations. Should use the same memory
 
@@ -224,7 +234,7 @@ def main():
 
     GANLogger.log(f"SOURCE DATASET: {dataset_path}")
 
-    title = f"MOF WGAN GP - GLR: {train_config.generator_learning_rate}, DLR: {train_config.critic_learning_rate}, S={image_shape}, BS={train_config.batch_size}"
+    title = f"MOF WGAN GP - GLR: {config.generator_learning_rate}, DLR: {config.critic_learning_rate}, S={image_shape}, BS={config.batch_size}"
     GANLogger.init(title, training_config.root_folder)
 
     print("Loading dataset...")
@@ -239,9 +249,6 @@ def main():
     GANLogger.log(*["\t" + line for line in transform_code.splitlines()], console=False)
 
     # exit()
-    if enable_wandb:
-        wandb.init(project=training_config.model_name, name=f"{training_config.instance_name}-{int(time.time() * 1000)}",
-                   entity=config.wandb.user, config=dict(train_config._asdict()))
 
     generator = Generator().to(device)
     critic = Discriminator().to(device)
@@ -253,23 +260,35 @@ def main():
 
     # Optimizers
     generator_optimizer = torch.optim.Adam(generator.parameters(),
-                                           lr=train_config.generator_learning_rate, betas=(train_config.adam_b1, train_config.adam_b2))
+                                           lr=config.generator_learning_rate, betas=(config.adam_b1, config.adam_b2))
     critic_optimizer = torch.optim.Adam(critic.parameters(),
-                                        lr=train_config.critic_learning_rate, betas=(train_config.adam_b1, train_config.adam_b2))
+                                        lr=config.critic_learning_rate, betas=(config.adam_b1, config.adam_b2))
 
     if enable_wandb:
-        wandb.watch(models=[generator, critic], log_freq=100)
+        wandb_meta = dict(config._asdict())
+        # wandb_meta['~critic_model'] = str(critic)
+        # wandb_meta['~generator_model'] = str(generator)
+        # wandb_meta['~data_transformer'] = transform_code
 
-    data_loader = DataLoader(dataset=dataset, batch_size=train_config.batch_size, shuffle=True)
+        wandb.init(project=training_config.model_name, name=f"{training_config.instance_name}-{int(time.time() * 1000)}",
+                   entity=project_config.wandb.user, config=wandb_meta)
 
-    monitor = GANMonitor(train_config=train_config, image_shape=image_shape,
+        wandb.termlog(str(generator))
+        wandb.termlog(str(critic))
+        wandb.termlog(gan_monitor.filter_source_code(transform_code))
+
+        wandb.watch(models=[generator, critic], log_freq=200)
+
+    data_loader = DataLoader(dataset=dataset, batch_size=config.batch_size, shuffle=True)
+
+    monitor = GANMonitor(train_config=config, image_shape=image_shape,
                          latent_vector_generator=generate_random_latent_vector,
                          data_loader=data_loader, generator=generator, critic=critic,
                          generator_optimizer=generator_optimizer, critic_optimizer=critic_optimizer,
                          dataset_transformer=data_transform_function, enable_wandb=enable_wandb)
 
     batch_index = 0
-    for epoch in range(1, train_config.epochs + 1):
+    for epoch in range(1, config.epochs + 1):
         for i, images in enumerate(data_loader):
             monitor.set_iteration(epoch=epoch, global_batch_index=batch_index, epoch_batch_index=i)
 
@@ -294,7 +313,7 @@ def main():
             gradient_penalty = compute_gradient_penalty(critic, real_images.data, generated_images.data)
 
             # Adversarial loss: We want the critic to maximize the separation between fake and real
-            d_loss: Tensor = generated_pred.mean() - real_pred.mean() + train_config.lambda_gp * gradient_penalty
+            d_loss: Tensor = generated_pred.mean() - real_pred.mean() + config.lambda_gp * gradient_penalty
 
             d_loss.backward()
             critic_optimizer.step()
@@ -302,7 +321,7 @@ def main():
             generator_optimizer.zero_grad()
 
             # Train the generator every N batches
-            if i % train_config.generator_train_interval == 0:
+            if i % config.generator_train_interval == 0:
                 # -----------------
                 #  Train Generator
                 # -----------------
@@ -330,5 +349,8 @@ def main():
 #     p.data.clamp_(-clip_value, clip_value)
 
 if __name__ == '__main__':
-    main()
+    # TODO: Hyperparameter optimization. Latent: [16, 64, 256, 1024], Batch Size: [16, 64, 256], Epochs = 10.
+    #  Adam B2, LR, Kernel Size, Padding, Dropout Rate, Weight Initialization
+
+    train()
     # asyncio.run(main())

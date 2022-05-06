@@ -17,9 +17,9 @@ from tqdm import tqdm
 
 from dataset.mof_dataset import MOFDataset
 from gan import training_config
-from gan.training_config import Config, DatasetType
+from gan.training_config import TrainingConfig, DatasetType
 from mofs import mof_stats, mof_properties
-from util import cache, utils
+from util import cache
 
 cuda = True if torch.cuda.is_available() else False
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -27,7 +27,7 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 class GANMonitor:
 
-    def __init__(self, train_config: Config, image_shape: Tuple[int, int, int, int], data_loader: DataLoader,
+    def __init__(self, train_config: TrainingConfig, image_shape: Tuple[int, int, int, int], data_loader: DataLoader,
                  latent_vector_generator: Callable[[int, bool], Tensor],
                  generator: Module, critic: Module,
                  generator_optimizer: Optimizer, critic_optimizer: Optimizer,
@@ -160,7 +160,7 @@ class GANMonitor:
                 hc_check_start = time.time()
                 request = [self.latent_vector_generator(110, True) for _ in range(106)]  # Same size as real = 11660
                 hc_samples = list(tqdm(pool.imap(generate_sample_hcs, request),
-                                       total=len(request), ncols=80, unit='grids'))
+                                       total=len(request), ncols=80, unit='batches'))
                 hc_samples = [x for sample in hc_samples for x in sample]
                 print(f"DONE: {round(time.time() - hc_check_start, 2)}s")
             # for j in range(1166):
@@ -179,3 +179,22 @@ class GANMonitor:
             else:
                 print(f"HC Distribution EMD: {hc_emd}")
             print(f"HC Check Time: {time.time() - hc_check_start}s")
+
+
+def filter_source_code(source_code: str):
+    # Remove comments and print statements
+    lines = [line for line in source_code.splitlines()
+             if not line.strip().startswith('#') and not line.strip().startswith('print(')]
+
+    # Remove for loops without a body
+    lines = [lines[i] for i in range(len(lines)) if not (
+            lines[i].strip().startswith('for') and i < len(lines) - 1 and lines[i + 1].strip() == "")]
+
+    # Recombine lines
+    filtered_source_code = "\n".join(line for line in lines).strip()
+
+    # Max of 2 line separators
+    while '\n\n\n' in filtered_source_code:
+        filtered_source_code = filtered_source_code.replace('\n\n\n', '\n\n')
+
+    return filtered_source_code

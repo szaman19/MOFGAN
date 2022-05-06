@@ -2,7 +2,7 @@ import random
 from enum import Enum
 from typing import List
 
-import config
+import project_config
 from dataset.mof_dataset import MOFDataset
 from mofs import mof_properties
 from util import transformations
@@ -70,7 +70,7 @@ def main():
     hc_transform = HCTransform.CUTOFF
     # hc_transform = HCTransform.LOG_SCALE_ENERGY_1000X
 
-    dataset = MOFDataset.load(f"{config.local.root}/mof_dataset.pt")
+    dataset = MOFDataset.load(f"{project_config.local.root}/mof_dataset.pt")
     print("Loaded dataset!")
 
     bins = 80

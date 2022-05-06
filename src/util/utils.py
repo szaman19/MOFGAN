@@ -5,14 +5,14 @@ from typing import Union
 
 import pysftp as pysftp
 
-import config
+import project_config
 
 
 class SFTPConnection:
 
     def __init__(self, sftp: pysftp.Connection):
         self.sftp = sftp
-        self.root = Path(config.sftp.root)
+        self.root = Path(project_config.sftp.root)
 
     def __enter__(self):
         self.sftp.__enter__()
@@ -38,9 +38,9 @@ class SFTPConnection:
 
 def sftp_connection() -> SFTPConnection:
     print("Connecting to remote server")
-    return SFTPConnection(pysftp.Connection(config.sftp.host,
-                                            username=config.sftp.user,
-                                            private_key=config.sftp.key,
+    return SFTPConnection(pysftp.Connection(project_config.sftp.host,
+                                            username=project_config.sftp.user,
+                                            private_key=project_config.sftp.key,
                                             cnopts=pysftp.CnOpts()))
 
 

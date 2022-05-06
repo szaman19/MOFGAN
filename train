@@ -1,4 +1,4 @@
 #!/bin/bash
 
-PYTHONPATH=src python -u src/model/mofgan.py > log 2>&1 & disown
+PYTHONPATH=src python -u src/gan/mofgan.py > log 2>&1 & disown
 echo "TRAINING STARTED!"
