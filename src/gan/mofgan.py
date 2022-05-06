@@ -211,7 +211,7 @@ def generate_random_latent_vector(batch_size: int, cpu=False) -> Tensor:
 #  Training
 # ----------
 
-async def main():
+def main():
     start = time.time()
     # TODO: Probably want to rotate after loading instead of storing rotations. Should use the same memory
 
@@ -229,7 +229,7 @@ async def main():
 
     print("Loading dataset...")
     dataset = MOFDataset.load(dataset_path)
-    dataset.transform(data_transform_function)
+    dataset.transform_(data_transform_function)
     if dataset_type == DatasetType.TRAIN:
         dataset = dataset.augment_rotations()
 
@@ -266,7 +266,7 @@ async def main():
                          latent_vector_generator=generate_random_latent_vector,
                          data_loader=data_loader, generator=generator, critic=critic,
                          generator_optimizer=generator_optimizer, critic_optimizer=critic_optimizer,
-                         transform_code=transform_code, enable_wandb=enable_wandb)
+                         dataset_transformer=data_transform_function, enable_wandb=enable_wandb)
 
     batch_index = 0
     for epoch in range(1, train_config.epochs + 1):
@@ -330,5 +330,5 @@ async def main():
 #     p.data.clamp_(-clip_value, clip_value)
 
 if __name__ == '__main__':
-    # main()
-    asyncio.run(main())
+    main()
+    # asyncio.run(main())

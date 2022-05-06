@@ -26,7 +26,7 @@ class MOFDataset(Dataset):
                           position_variance=self.position_variance,
                           mofs=mofs)
 
-    def transform(self, transformer: Callable[[Tensor], Tensor]):
+    def transform_(self, transformer: Callable[[Tensor], Tensor]):
         print("Transforming dataset...")
         start = time.time()
         result = transformer(torch.stack(self.mofs))
@@ -41,7 +41,7 @@ class MOFDataset(Dataset):
 
         print("Augmenting rotations...")
         result: Dict[str, List[Tensor]] = {}
-        for i, mof_name in enumerate(tqdm(self.mof_names, ncols=80)):  # MOF = Cx32x32x32. Want to produce 10xCx32x32x32
+        for i, mof_name in enumerate(tqdm(self.mof_names, ncols=80, unit='mofs')):  # MOF = Cx32x32x32. Want to produce 10xCx32x32x32
             rotation_iterator = zip(*[Rotations.rotate_3d(channel) for channel in self.mofs[i]])
             result[mof_name] = [torch.stack(channels) for channels in rotation_iterator]
         return self.clone_with_data(result)

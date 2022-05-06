@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import NamedTuple, Dict
 
 model_name = "EnergyPosition"
-instance_name = "FixedPositions"
+instance_name = "2Channel"
 
 project_root_folder = Path()
 

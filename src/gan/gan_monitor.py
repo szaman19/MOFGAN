@@ -1,5 +1,6 @@
 import copy
 import hashlib
+import inspect
 import pickle
 import time
 from typing import Tuple, Callable, List
@@ -18,7 +19,7 @@ from dataset.mof_dataset import MOFDataset
 from gan import training_config
 from gan.training_config import Config, DatasetType
 from mofs import mof_stats, mof_properties
-from util import cache
+from util import cache, utils
 
 cuda = True if torch.cuda.is_available() else False
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -30,7 +31,7 @@ class GANMonitor:
                  latent_vector_generator: Callable[[int, bool], Tensor],
                  generator: Module, critic: Module,
                  generator_optimizer: Optimizer, critic_optimizer: Optimizer,
-                 transform_code: str, enable_wandb: bool):
+                 dataset_transformer: Callable[[Tensor], Tensor], enable_wandb: bool):
         self.train_config = train_config
         self.image_shape = image_shape
         self.batches_per_epoch = len(data_loader)
@@ -39,7 +40,7 @@ class GANMonitor:
         self.critic = critic
         self.generator_optimizer = generator_optimizer
         self.critic_optimizer = critic_optimizer
-        self.transform_code = transform_code
+        self.dataset_transformer = dataset_transformer
         self.enable_wandb = enable_wandb
         self.real_hcs: List[float] = []
 
@@ -121,35 +122,34 @@ class GANMonitor:
 
         # if self.enable_wandb and self.epoch_batch_index % (self.train_config.sample_interval * 2) == 0:
         if self.epoch_batch_index % (self.train_config.sample_interval * 2) == 0:
-            # print(model_clone)
-            print("Checking HC distribution...")  # TODO: Parallelize this
-            generator_clone = self.generator.__class__()
-            generator_clone.load_state_dict(copy.deepcopy(self.generator.state_dict()))
-            generator_clone.cpu()
-            # generator_clone.to(device)
+            print("Checking HC distribution...")
+
             # self.real_hcs = [1, 2, 3]
-            real_hc_cache_key = ['real_hcs', self.transform_code]
+            transform_code: str = inspect.getsource(self.dataset_transformer)
+            real_hc_cache_key = ['real_hcs', transform_code]
             self.real_hcs = cache.get(real_hc_cache_key)
 
             if not self.real_hcs:
                 print("Loading full real MOF dataset...")
                 full_dataset = MOFDataset.load(training_config.datasets[DatasetType.FULL])
-                print("LOADED DATASET:", full_dataset)
-                print("Computing real henry constant distribution...")
+                print("Transforming full dataset")
+                full_dataset.transform_(self.dataset_transformer)  # Need to compare to real HCs under same energy grid transformation
+
+                print("Computing real henry constants...")
                 start = time.time()
-                with ray.util.multiprocessing.Pool(36) as pool:
-                    energy_grids = [mof[0] for mof in full_dataset.mofs]
-                    self.real_hcs = list(tqdm(pool.imap(mof_properties.get_henry_constant, energy_grids),
-                                              total=len(energy_grids), ncols=80, unit='mofs'))
+                self.real_hcs = [mof_properties.get_henry_constant(mof[0]) for mof in full_dataset.mofs]
+                print(f"DONE: {round(time.time() - start, 2)}s")
 
                 print("Saving...")
                 cache.store(real_hc_cache_key, self.real_hcs)
-                transform_code_hash: str = hashlib.sha1(self.transform_code.encode('utf-8')).hexdigest()
+                transform_code_hash: str = hashlib.sha1(transform_code.encode('utf-8')).hexdigest()
                 with (training_config.root_folder / f"real_transformed_hcs-{transform_code_hash}.txt").open('w+') as f:
                     f.write("\n".join(str(x) for x in self.real_hcs))  # Save real HC distribution
-                print(f"DONE: {round(time.time() - start, 2)}s")
 
-            with ray.util.multiprocessing.Pool(36) as pool:
+            generator_clone = self.generator.__class__()
+            generator_clone.load_state_dict(copy.deepcopy(self.generator.state_dict()))
+            # generator_clone.cpu()
+            with ray.util.multiprocessing.Pool(35) as pool:
                 def generate_sample_hcs(latent_vector: Tensor):
                     sample_hcs = []
                     for hc_sample_mof in generator_clone(latent_vector):
@@ -166,9 +166,6 @@ class GANMonitor:
             # for j in range(1166):
             # for hc_sample_mof in generator_clone(self.latent_vector_generator(10)):  # .cpu()
             #     hcs.append(mof_properties.get_henry_constant(hc_sample_mof[0]))
-            # print(j, time.time() - hc_check_start)
-            # TODO: Need to compare with real_hcs under same transformation
-            # TODO: Load and produce real_hcs as well as do check in parallel
 
             hc_result_path = training_config.metrics_folder / save_id / "henry_constant.txt"
             hc_result_path.parent.mkdir(parents=True, exist_ok=True)
